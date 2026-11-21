@@ -78,7 +78,7 @@ Ports: webapp `8090`, engine `8092` — no conflict with other local tools on
 
 1. **Models** → **Download** *SD 1.5 Q8* (~1.1 GB) → wait for the progress line.
 2. Click **Load**; the header pill should say **Engine online**.
-3. **Create** → prompt → keep **256 × 256 / 10 steps** → **Generate**.
+3. **Create** → prompt → keep **384 × 384 / 10 steps** → **Generate**.
 4. Progress streams live; the PNG appears in **Result** and in the **Gallery**.
 5. **Cancel** stops a run; **Unload** frees RAM when finished.
 
@@ -95,19 +95,20 @@ LD_WEB_PORT=8095 LD_ENGINE_PORT=8096 python3 server.py   # different ports
 LD_ENGINE=/path/to/sd-server python3 server.py           # existing engine binary
 ```
 
-Faster first test: **128 × 128 / 5 steps**.
+Keep 384×384 or larger: SD1.5 base models produce garbled images at 256×256
+and below. 512×512 gives the best quality but is roughly twice as slow on CPU.
 
 ### Troubleshooting
 
 - `python3`/`cmake`/`ninja` missing → `apt install -y python3 cmake ninja-build build-essential`
 - Build fails → check `df -h`, then rerun `bin/install-engine.sh`
 - `Engine offline` → run `bin/check.sh`; make sure a model is loaded
-- Very slow → drop to 128×128 / 5 steps; this is CPU-only on the 870
+- Very slow → reduce steps, not resolution; 256×256 and below produce garbage on SD1.5 base models
 
 ## Limits
 
 - CPU-only inference on Snapdragon 870 / Hexagon V68. Expect slow generation;
-  start at 256×256 / 10 steps, enable 512 only with patience.
+  start at 384×384 / 10 steps, enable 512 only with patience.
 - No NPU: precompiled Qualcomm QNN assets target newer chipsets, and the
   Android-only Local Dream core cannot run in Debian.
 - First run needs a build toolchain and ~1 GB of model storage.

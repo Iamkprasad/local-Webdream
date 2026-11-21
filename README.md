@@ -52,8 +52,9 @@ NDJSON progress, PNG gallery, and loopback-only security checks. Nothing is
 committed to the network and there are no accounts.
 
 Because the Android/Bionic/QNN core cannot run in Debian, this webapp is
-**CPU-only**. Start at 256×256 / 10 steps; NPU acceleration is not available in
-this environment. Full details are in
+**CPU-only**. Start at 384×384 / 10 steps; NPU acceleration is not available in
+this environment. SD1.5 base models produce unusable output below ~384px. Full
+details are in
 [`standalone_image/README.md`](standalone_image/README.md).
 
 ## User Guide

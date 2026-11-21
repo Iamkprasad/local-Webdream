@@ -25,11 +25,15 @@ class CoreTests(unittest.TestCase):
         for item in server.CATALOG:
             self.assertTrue(item["url"].startswith("https://huggingface.co/"))
             self.assertTrue(item["url"].endswith(".gguf"))
+            self.assertGreaterEqual(item["size"], 384)  # smaller sizes are unusable
 
     def test_payload_validation(self):
         body = server._generation_payload({"prompt": "a cat", "size": 256})
         self.assertEqual(body["width"], 256)
         self.assertEqual(body["sample_params"]["sample_steps"], 10)
+        self.assertIn("sample_method", body["sample_params"])
+        self.assertNotIn("method", body["sample_params"])
+        self.assertEqual(body["sample_params"]["scheduler"], "discrete")
         with self.assertRaises(ValueError):
             server._generation_payload({"prompt": ""})
         with self.assertRaises(ValueError):

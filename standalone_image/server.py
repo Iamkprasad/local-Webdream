@@ -51,10 +51,10 @@ CATALOG = [
         "size_mb": 1682,
         "min_ram_mb": 2500,
         "license": "CreativeML OpenRAIL-M",
-        "size": 256,
+        "size": 384,
         "steps": 10,
         "sha256": None,
-        "notes": "Best quality/size on phone CPU. Start here.",
+        "notes": "Best quality/size on phone CPU. Start at 384x384.",
     },
     {
         "id": "sd15-q40",
@@ -66,15 +66,16 @@ CATALOG = [
         "size_mb": 1494,
         "min_ram_mb": 1800,
         "license": "CreativeML OpenRAIL-M",
-        "size": 256,
+        "size": 384,
         "steps": 10,
         "sha256": None,
-        "notes": "Smallest available CPU fallback; start at 256x256 / 10 steps.",
+        "notes": "Smallest CPU fallback; use 384x384 or larger for usable output.",
     },
 ]
 ALLOWED_SIZES = (128, 256, 384, 512)
 SAMPLE_METHODS = ("euler", "euler_a", "heun", "dpm2", "dpm++2m",
                   "dpm++2m_sde", "lcm", "ddim_trailing")
+SCHEDULERS = ("discrete", "karras")
 
 _lock = threading.RLock()
 _gen_lock = threading.Lock()
@@ -268,12 +269,15 @@ def load_model(model_id):
         raise ValueError("Model not installed: %s" % entry["file"])
     free = _free_ram_mb()
     need = entry["min_ram_mb"]
+    warning = None
     if free is not None and free < need - 150:
-        raise ValueError("Need %d MB free RAM, have %d MB" % (need, free))
+        warning = "Low RAM: %d MB free (recommended %d MB) — expect heavy swapping" % (
+            free, need)
     with _lock:
         st = _engine_state()
         if st.get("model_id") == model_id and engine_running():
-            return {"status": "already_loaded", "model_id": model_id}
+            return {"status": "already_loaded", "model_id": model_id,
+                    "warning": warning}
         if _pid_alive(st.get("pid")):
             _kill(int(st["pid"]))
             time.sleep(0.4)
@@ -305,7 +309,7 @@ def load_model(model_id):
                                   "model_id": model_id, "job_id": None,
                                   "started": _now()})
                     return {"status": "loaded", "model_id": model_id,
-                            "pid": proc.pid}
+                            "pid": proc.pid, "warning": warning}
             except Exception:
                 pass
             time.sleep(0.5)
@@ -350,17 +354,20 @@ def _generation_payload(body):
     if width not in ALLOWED_SIZES or height not in ALLOWED_SIZES:
         raise ValueError("Unsupported size")
     steps = int(body.get("steps") or 10)
-    if steps < 1 or steps > 30:
-        raise ValueError("Steps must be 1..30")
+    if steps < 1 or steps > 50:
+        raise ValueError("Steps must be 1..50")
     cfg = float(body.get("cfg", 7.0))
     if cfg < 1 or cfg > 30:
         raise ValueError("CFG must be 1..30")
     method = str(body.get("method") or "dpm++2m")
     if method not in SAMPLE_METHODS:
         raise ValueError("Unsupported sampler")
+    scheduler = str(body.get("scheduler") or "discrete")
+    if scheduler not in SCHEDULERS:
+        raise ValueError("Unsupported scheduler")
     batch = int(body.get("batch") or 1)
-    if batch < 1 or batch > 4:
-        raise ValueError("Batch must be 1..4")
+    if batch < 1 or batch > 10:
+        raise ValueError("Batch must be 1..10")
     seed = int(body.get("seed") if body.get("seed") is not None else -1)
     return {
         "prompt": prompt,
@@ -372,7 +379,8 @@ def _generation_payload(body):
         "preview": "none",
         "output_format": "png",
         "vae_tiling_params": {"enabled": max(width, height) >= 512},
-        "sample_params": {"method": method, "sample_steps": steps,
+        "sample_params": {"sample_method": method, "sample_steps": steps,
+                          "scheduler": scheduler,
                           "guidance": {"txt_cfg": cfg}},
     }
 
@@ -636,7 +644,8 @@ class Handler(BaseHTTPRequestHandler):
                         "seed", "batch_count")}
                     params["steps"] = payload["sample_params"]["sample_steps"]
                     params["cfg"] = payload["sample_params"]["guidance"]["txt_cfg"]
-                    params["method"] = payload["sample_params"]["method"]
+                    params["method"] = payload["sample_params"]["sample_method"]
+                    params["scheduler"] = payload["sample_params"]["scheduler"]
                     events.put({"t": "done", "images": saved,
                                 "ms": images[0]["ms"], "params": params})
                 except Exception as e:

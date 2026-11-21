@@ -35,8 +35,16 @@
       </div>
 
       <div id="capacity" class="capacity"></div>
+      <nav class="subtabs" id="model-tabs" aria-label="Model runtime">
+        <button class="subtab active" data-runtime="cpu" type="button">CPU Models</button>
+        <button class="subtab" data-runtime="npu" type="button">NPU Models</button>
+      </nav>
       <div id="download" class="download-banner" hidden></div>
       <div id="models" class="models"><p class="muted">Loading models…</p></div>
+      <div id="npu-notice" class="npu-notice" hidden>
+        NPU models need the Android QNN runtime, which cannot run inside Debian/Termux.
+        Use the Local Dream APK for NPU inference.
+      </div>
 
       <div class="box search-box">
         <label for="search">Find SD1.5 GGUF on Hugging Face</label>
@@ -67,7 +75,7 @@
           <div class="progress-label"><span id="stage">starting</span><span id="steps-label"></span></div>
           <div class="track"><div id="bar"></div></div>
           <div class="progress-meta">
-            <span id="elapsed">0s elapsed</span>
+            <span><span id="elapsed">0s elapsed</span> · <span id="eta">estimating…</span></span>
             <span id="alive" class="alive"><i></i> working</span>
           </div>
         </div>
@@ -92,33 +100,36 @@
 
       <label>Resolution</label>
       <div id="res-chips" class="chips">
-        <button type="button" data-w="256" data-h="256">256×256</button>
+        <button type="button" data-w="384" data-h="384">384×384</button>
         <button type="button" data-w="512" data-h="512">512×512</button>
         <button type="button" data-w="512" data-h="768">512×768</button>
         <button type="button" data-w="768" data-h="512">768×512</button>
-        <button type="button" data-w="384" data-h="384">384×384</button>
-        <button type="button" data-w="128" data-h="128">128×128</button>
+      </div>
+      <p class="hint">Use 384×384 or larger. SD1.5 base models produce unusable output at 256×256 and below.</p>
+
+      <div class="setting-row">
+        <label for="sched-chips">Scheduler</label>
+        <label class="switch-label" for="karras">Karras
+          <input id="karras" type="checkbox">
+          <span class="switch"></span>
+        </label>
+      </div>
+      <div id="sched-chips" class="chips">
+        <button type="button" data-m="dpm++2m">DPM++ 2M</button>
+        <button type="button" data-m="dpm++2m_sde">DPM++ 2M SDE</button>
+        <button type="button" data-m="euler_a">Euler A</button>
+        <button type="button" data-m="euler">Euler</button>
+        <button type="button" data-m="lcm">LCM</button>
       </div>
 
-      <label for="method">Sampler</label>
-      <select id="method">
-        <option value="dpm++2m">DPM++ 2M</option>
-        <option value="euler_a">Euler A</option>
-        <option value="euler">Euler</option>
-        <option value="heun">Heun</option>
-        <option value="dpm++2m_sde">DPM++ 2M SDE</option>
-        <option value="lcm">LCM</option>
-        <option value="ddim_trailing">DDIM</option>
-      </select>
-
       <label for="steps">Steps: <span id="steps-val">10</span></label>
-      <input id="steps" type="range" min="1" max="30" value="10">
+      <input id="steps" type="range" min="1" max="50" value="10">
 
       <label for="cfg">CFG Scale: <span id="cfg-val">7.5</span></label>
-      <input id="cfg" type="range" min="1" max="15" step="0.5" value="7.5">
+      <input id="cfg" type="range" min="1" max="30" step="0.5" value="7.5">
 
       <label for="batch">Batch Count: <span id="batch-val">1</span></label>
-      <input id="batch" type="range" min="1" max="4" value="1">
+      <input id="batch" type="range" min="1" max="10" value="1">
 
       <label for="seed">Random Seed (Optional)</label>
       <input id="seed" type="number" value="-1" placeholder="Random">

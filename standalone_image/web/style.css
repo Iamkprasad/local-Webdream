@@ -53,6 +53,18 @@ button:disabled { opacity: .45; cursor: default; }
   font-size: 15px; padding: 12px 4px 11px; border-bottom: 2px solid transparent;
 }
 .tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.subtabs { display: flex; border-bottom: 1px solid var(--line); margin: 10px 0 12px; }
+.subtab {
+  flex: 1; background: none; border: 0; color: var(--muted); font-weight: 600;
+  font-size: 14px; padding: 9px 4px; border-bottom: 2px solid transparent;
+  min-height: 40px; border-radius: 0;
+}
+.subtab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.npu-notice {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px; color: var(--muted); font-size: 13px;
+}
+.npu-notice[hidden], .models[hidden] { display: none; }
 
 main { max-width: 720px; margin: 0 auto; padding: 16px 14px 48px; }
 .view { display: none; }
@@ -159,10 +171,21 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
   overflow: hidden;
 }
 .card-image img { display: block; width: 100%; height: auto; background: #000; }
-.card-body { padding: 12px; }
+.card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+}
+.card-head b { font-size: 15px; }
+.save-btn {
+  width: 34px; height: 34px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; text-decoration: none;
+  background: var(--surface-2); border: 1px solid var(--line); font-size: 15px;
+}
+.card-body { padding: 0 12px 12px; }
 .params-box {
   background: var(--surface-2); border-radius: 9px; padding: 10px 11px;
   font-size: 12px; color: var(--muted); line-height: 1.55;
+  white-space: pre-line;
 }
 .params-box b { color: var(--ink); }
 .card-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
@@ -185,6 +208,24 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips button { min-height: 36px; padding: 0 12px; font-size: 13px; }
 .chips button.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+.setting-row { display: flex; align-items: center; justify-content: space-between; }
+.setting-row label { margin-bottom: 6px; }
+.switch-label {
+  display: flex; align-items: center; gap: 7px; color: var(--muted);
+  font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.switch-label input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch {
+  width: 36px; height: 20px; border-radius: 999px; background: var(--surface-2);
+  border: 1px solid var(--line); position: relative; transition: background .2s;
+}
+.switch::after {
+  content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--muted); top: 2px; left: 3px; transition: transform .2s;
+}
+.switch-label input:checked + .switch { background: var(--accent); border-color: var(--accent); }
+.switch-label input:checked + .switch::after { background: #fff; transform: translateX(15px); }
+.switch-label input:disabled + .switch { opacity: .4; }
 .sheet-actions {
   display: flex; justify-content: space-between; align-items: center;
   margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line);

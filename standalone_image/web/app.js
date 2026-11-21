@@ -5,9 +5,10 @@
   var HISTORY_KEY = 'localdream-image-history';
   var PARAMS_KEY = 'localdream-image-params';
   var DEFAULTS = {
-    width: 256, height: 256, method: 'dpm++2m',
+    width: 384, height: 384, method: 'dpm++2m', scheduler: 'discrete',
     steps: 10, cfg: 7.5, batch: 1, seed: -1
   };
+  var MIN_SIZE = 384; // SD1.5 base models produce garbage below this
   var METHOD_LABELS = {
     'dpm++2m': 'DPM++ 2M', 'euler_a': 'Euler A', 'euler': 'Euler',
     'heun': 'Heun', 'dpm++2m_sde': 'DPM++ 2M SDE', 'lcm': 'LCM',
@@ -16,7 +17,8 @@
   var state = {
     engine: {}, busy: false, loading: null,
     startedAt: 0, loadingAt: 0,
-    params: readParams(), pendingSize: null
+    progressStart: 0, progressDone: 0, progressTotal: 0,
+    params: readParams(), pendingSize: null, pendingMethod: null
   };
 
   function byId(id) { return document.getElementById(id); }
@@ -27,12 +29,21 @@
     return node;
   }
   function fmt(n) { return n === null || n === undefined ? '?' : Number(n).toLocaleString(); }
+  function fmtDuration(ms) {
+    var s = Math.max(0, Math.round(ms / 1000));
+    return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+  }
   function cap(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
   function readParams() {
     try {
       var saved = JSON.parse(localStorage.getItem(PARAMS_KEY) || 'null');
       if (saved && saved.width && saved.height) {
-        return Object.assign({}, DEFAULTS, saved);
+        var p = Object.assign({}, DEFAULTS, saved);
+        if (p.width < MIN_SIZE || p.height < MIN_SIZE) {
+          p.width = MIN_SIZE;
+          p.height = MIN_SIZE;
+        }
+        return p;
       }
     } catch (e) {}
     return Object.assign({}, DEFAULTS);
@@ -111,7 +122,7 @@
       state.params.steps = m.steps;
       saveParams();
       syncSettings();
-      say(m.name + ' ready.');
+      say(r.warning || (m.name + ' ready.'));
       refresh();
     }).catch(function (e) {
       state.loading = null;
@@ -227,13 +238,14 @@
   function renderParamSummary() {
     var p = state.params;
     byId('param-summary').textContent =
-      p.width + '×' + p.height + ' · ' + methodLabel(p.method) + ' · ' +
+      p.width + '×' + p.height + ' · ' + methodLabel(p.method) +
+      (p.scheduler === 'karras' ? ' (Karras)' : '') + ' · ' +
       p.steps + ' steps · CFG ' + p.cfg + ' · batch ' + p.batch + ' · ' +
       (p.seed === -1 ? 'random seed' : 'seed ' + p.seed);
   }
   function syncSettings() {
     var p = state.params;
-    byId('method').value = p.method;
+    state.pendingMethod = p.method;
     byId('steps').value = p.steps;
     byId('cfg').value = p.cfg;
     byId('batch').value = p.batch;
@@ -247,6 +259,12 @@
         Number(chips[i].getAttribute('data-w')) === p.width &&
         Number(chips[i].getAttribute('data-h')) === p.height);
     }
+    var scheds = document.querySelectorAll('#sched-chips button');
+    for (var j = 0; j < scheds.length; j++) {
+      scheds[j].classList.toggle('selected', scheds[j].getAttribute('data-m') === p.method);
+    }
+    byId('karras').checked = p.scheduler === 'karras';
+    byId('karras').disabled = p.method === 'lcm';
     renderParamSummary();
   }
   function openSettings(which) {
@@ -267,29 +285,28 @@
   function paramLine(item) {
     var p = item.params || {};
     return 'steps: ' + (p.steps || '-') + ' / CFG: ' + (p.cfg || '-') +
-      ' / seed: ' + (p.seed === undefined ? '-' : p.seed) +
-      ' / size: ' + (p.width || '-') + '×' + (p.height || '-') +
-      ' / time: ' + Math.round((item.ms || 0) / 1000) + 's' +
-      ' / ' + methodLabel(p.method);
+      ' / seed: ' + (p.seed === undefined ? '-' : p.seed) + '\n' +
+      'size: ' + (p.width || '-') + '×' + (p.height || '-') +
+      ' / time: ' + ((item.ms || 0) / 1000).toFixed(1) + 's / CPU';
   }
   function makeCard(item) {
     var card = el('div', 'card-image');
+    var head = el('div', 'card-head');
+    head.appendChild(el('b', '', 'Result'));
+    var topSave = el('a', 'save-btn', '💾');
+    topSave.href = item.path; topSave.title = 'Save to gallery';
+    topSave.download = (item.id || 'image') + '.png';
+    head.appendChild(topSave);
+    card.appendChild(head);
     var img = el('img');
     img.src = item.path; img.alt = 'generated image'; img.loading = 'lazy';
     card.appendChild(img);
     var body = el('div', 'card-body');
     var box = el('div', 'params-box');
-    box.appendChild(el('b', '', 'Prompt: '));
-    box.appendChild(document.createTextNode((item.params && item.params.prompt) || ''));
+    box.appendChild(el('b', '', 'Generation Params'));
     box.appendChild(el('br'));
     box.appendChild(document.createTextNode(paramLine(item)));
     body.appendChild(box);
-    var actions = el('div', 'card-actions');
-    var save = el('a', '', 'Save PNG');
-    save.href = item.path;
-    save.download = (item.id || 'image') + '.png';
-    actions.appendChild(save);
-    body.appendChild(actions);
     card.appendChild(body);
     return card;
   }
@@ -313,10 +330,12 @@
       prompt: prompt,
       negative_prompt: byId('negative').value,
       width: p.width, height: p.height, steps: p.steps,
-      cfg: p.cfg, method: p.method, batch: p.batch, seed: p.seed
+      cfg: p.cfg, method: p.method, scheduler: p.scheduler,
+      batch: p.batch, seed: p.seed
     };
     state.busy = true;
     state.startedAt = Date.now();
+    state.progressStart = 0; state.progressDone = 0; state.progressTotal = 0;
     byId('go').disabled = true;
     byId('cancel').disabled = false;
     byId('progress').hidden = false;
@@ -324,6 +343,7 @@
     byId('stage').textContent = 'starting';
     byId('steps-label').textContent = '';
     byId('elapsed').textContent = '0s elapsed';
+    byId('eta').textContent = 'estimating…';
     setStatus('Generating — starting up', 'busy');
     say('');
 
@@ -349,6 +369,13 @@
                   Math.min(100, Math.round(ev.completed * 100 / ev.total)) + '%';
                 byId('steps-label').textContent = ev.completed + ' / ' + ev.total + ' steps';
                 setStatus('Generating — step ' + ev.completed + ' of ' + ev.total, 'busy');
+                if (!state.progressStart && ev.completed > 0) {
+                  state.progressStart = Date.now();
+                }
+                if (state.progressStart) {
+                  state.progressDone = ev.completed;
+                  state.progressTotal = ev.total;
+                }
               }
             } else if (ev.t === 'done') {
               byId('bar').style.width = '100%';
@@ -392,6 +419,16 @@
       say('Cancel requested — stopping after the current step.');
     }).catch(function (e) { say(e.message, true); });
   });
+  byId('model-tabs').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-runtime]');
+    if (!btn) { return; }
+    var subs = document.querySelectorAll('#model-tabs .subtab');
+    for (var i = 0; i < subs.length; i++) { subs[i].classList.remove('active'); }
+    btn.classList.add('active');
+    var npu = btn.getAttribute('data-runtime') === 'npu';
+    byId('models').hidden = npu;
+    byId('npu-notice').hidden = !npu;
+  });
   byId('refresh-btn').addEventListener('click', function () { refresh(); pollDownload(); });
   byId('advanced-btn').addEventListener('click', function () { openSettings('settings-modal'); });
   byId('settings-btn').addEventListener('click', function () { openSettings('settings-modal'); });
@@ -402,7 +439,9 @@
       state.params.width = state.pendingSize.w;
       state.params.height = state.pendingSize.h;
     }
-    state.params.method = byId('method').value;
+    state.params.method = state.pendingMethod || state.params.method;
+    state.params.scheduler = byId('karras').checked &&
+      state.params.method !== 'lcm' ? 'karras' : 'discrete';
     state.params.steps = parseInt(byId('steps').value, 10);
     state.params.cfg = parseFloat(byId('cfg').value);
     state.params.batch = parseInt(byId('batch').value, 10);
@@ -438,6 +477,16 @@
     for (var i = 0; i < chips.length; i++) { chips[i].classList.remove('selected'); }
     btn.classList.add('selected');
   });
+  byId('sched-chips').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-m]');
+    if (!btn) { return; }
+    state.pendingMethod = btn.getAttribute('data-m');
+    var chips = document.querySelectorAll('#sched-chips button');
+    for (var i = 0; i < chips.length; i++) { chips[i].classList.remove('selected'); }
+    btn.classList.add('selected');
+    byId('karras').disabled = state.pendingMethod === 'lcm';
+    if (byId('karras').disabled) { byId('karras').checked = false; }
+  });
   ['steps', 'cfg', 'batch'].forEach(function (id) {
     byId(id).addEventListener('input', function () {
       byId(id + '-val').textContent = byId(id).value;
@@ -455,6 +504,11 @@
     if (state.busy && state.startedAt) {
       byId('elapsed').textContent =
         Math.floor((Date.now() - state.startedAt) / 1000) + 's elapsed';
+      if (state.progressStart && state.progressDone > 0) {
+        var perStep = (Date.now() - state.progressStart) / state.progressDone;
+        var left = Math.max(0, (state.progressTotal - state.progressDone) * perStep);
+        byId('eta').textContent = '~' + fmtDuration(left) + ' left';
+      }
     }
     if (state.loading && state.loadingAt) {
       setStatus('Loading ' + state.loading + '… ' +
