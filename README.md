@@ -30,11 +30,31 @@ If you like it, please consider [sponsor](#-support-this-project) this project.
 
 ## Standalone Image Webapp (Termux / Debian)
 
-A separate, image-only localhost webapp now lives in
+A separate, image-only localhost webapp lives in
 [`standalone_image/`](standalone_image/). It is independent of the Android APK:
-it runs on a phone inside Debian/Termux, uses the portable `stable-diffusion.cpp`
-engine, and serves a mobile UI on `http://127.0.0.1:8090/`. See its
-[README](standalone_image/README.md) for install and usage.
+it runs on a phone inside Debian/Termux, uses the portable
+[`stable-diffusion.cpp`](https://github.com/leejet/stable-diffusion.cpp) engine
+(the upstream of the submodule used for this repo's DiT work), and serves a
+mobile UI on `http://127.0.0.1:8090/`. The engine binds `127.0.0.1:8092`, so it
+does not conflict with other local tools.
+
+```bash
+cd standalone_image
+chmod +x bin/*.sh
+bin/install-engine.sh        # once: build sd-server, CPU only
+python3 server.py            # open http://127.0.0.1:8090/
+python3 selfcheck.py         # 8 assert-based checks (no device needed)
+```
+
+Features: curated SD1.5 GGUF downloads, read-only Hugging Face search, lazy
+model load/unload with a RAM gate, prompt/negative prompt/size/steps/seed,
+NDJSON progress, PNG gallery, and loopback-only security checks. Nothing is
+committed to the network and there are no accounts.
+
+Because the Android/Bionic/QNN core cannot run in Debian, this webapp is
+**CPU-only**. Start at 256×256 / 10 steps; NPU acceleration is not available in
+this environment. Full details are in
+[`standalone_image/README.md`](standalone_image/README.md).
 
 ## User Guide
 

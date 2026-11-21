@@ -28,7 +28,10 @@ python3 server.py
 # open http://127.0.0.1:8090/
 ```
 
-Ports: webapp `8090`, engine `8092` (no conflict with PilliVesh's 8080/8091).
+Ports: webapp `8090`, engine `8092` (no conflict with other local tools on 8080/8091).
+
+To verify without a phone: `python3 selfcheck.py` runs 8 assert-based checks
+(mock engine job + live localhost HTTP endpoints) and needs no model download.
 
 1. Models → Download a curated SD1.5 GGUF → Load.
 2. Create → prompt, negative prompt, size, steps, seed → Generate.
