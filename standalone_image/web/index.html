@@ -2,79 +2,145 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#7B4DFF">
-  <title>Local Dream — Image</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16171b">
+  <title>Local Dream</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header>
-    <h1>Local Dream <span>Image</span></h1>
-    <span id="engine" class="pill">Engine offline</span>
+  <header class="topbar">
+    <div class="brand">Local Dream <span class="sparkle">✨</span></div>
+    <div class="top-actions">
+      <button id="settings-btn" class="icon-btn" type="button" title="Advanced settings" aria-label="Advanced settings">⚙</button>
+      <button id="info-btn" class="icon-btn" type="button" title="About" aria-label="About">?</button>
+    </div>
   </header>
 
-  <main>
-    <section class="card">
-      <h2>Models</h2>
-      <div id="models" class="models"><p class="muted">Loading…</p></div>
+  <div class="statusbar">
+    <span id="engine" class="pill">Engine offline</span>
+    <span id="status-detail" class="status-detail">Checking engine…</span>
+  </div>
 
-      <div class="box">
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button class="tab active" data-tab="prompt" type="button">Prompt</button>
+    <button class="tab" data-tab="result" type="button">Result</button>
+    <button class="tab" data-tab="history" type="button">History</button>
+  </nav>
+
+  <main>
+    <section class="view active" id="view-prompt">
+      <div class="section-head">
+        <h2>Available Models</h2>
+        <button id="refresh-btn" class="text-btn" type="button">Refresh</button>
+      </div>
+
+      <div id="capacity" class="capacity"></div>
+      <div id="download" class="download-banner" hidden></div>
+      <div id="models" class="models"><p class="muted">Loading models…</p></div>
+
+      <div class="box search-box">
         <label for="search">Find SD1.5 GGUF on Hugging Face</label>
         <div class="row">
-          <input id="search" type="text" maxlength="64" placeholder="SD 1.5 GGUF">
+          <input id="search" type="text" maxlength="64" placeholder="SD 1.5 GGUF" autocomplete="off">
           <button id="search-btn" type="button">Search</button>
         </div>
         <p class="hint">Only curated models can be downloaded here. To add one,
           edit <code>standalone_image/server.py</code> → <code>CATALOG</code>.</p>
         <div id="results" class="results"></div>
       </div>
-      <div id="download" class="download"></div>
-    </section>
 
-    <section class="card">
-      <h2>Create</h2>
-      <label for="prompt">Prompt</label>
-      <textarea id="prompt" rows="3" placeholder="a cat astronaut on the moon, studio photo"></textarea>
-
-      <label for="negative">Negative prompt</label>
-      <input id="negative" type="text" placeholder="blurry, lowres, bad anatomy">
-
-      <div class="grid">
-        <div>
-          <label for="size">Size</label>
-          <select id="size">
-            <option value="256">256 × 256</option>
-            <option value="128">128 × 128</option>
-            <option value="384">384 × 384</option>
-            <option value="512">512 × 512 (slow)</option>
-          </select>
+      <div class="prompt-block">
+        <div class="section-head">
+          <h2>Prompt</h2>
+          <button id="advanced-btn" class="text-btn" type="button">Advanced ⚙</button>
         </div>
-        <div><label for="steps">Steps</label><input id="steps" type="number" min="1" max="30" value="10"></div>
-        <div><label for="seed">Seed</label><input id="seed" type="number" value="-1"></div>
-      </div>
+        <textarea id="prompt" rows="4" placeholder="a cat astronaut on the moon, studio photo"></textarea>
+        <label for="negative">Negative prompt</label>
+        <input id="negative" type="text" placeholder="blurry, lowres, bad anatomy" autocomplete="off">
+        <div id="param-summary" class="param-summary"></div>
+        <div class="row actions">
+          <button id="go" class="primary" type="button" disabled>Generate</button>
+          <button id="cancel" type="button" disabled>Cancel</button>
+        </div>
 
-      <div class="row actions">
-        <button id="go" class="primary" type="button" disabled>Generate</button>
-        <button id="cancel" type="button" disabled>Cancel</button>
+        <div id="progress" class="progress" hidden>
+          <div class="progress-label"><span id="stage">starting</span><span id="steps-label"></span></div>
+          <div class="track"><div id="bar"></div></div>
+          <div class="progress-meta">
+            <span id="elapsed">0s elapsed</span>
+            <span id="alive" class="alive"><i></i> working</span>
+          </div>
+        </div>
+        <p id="message" class="message" role="status"></p>
       </div>
-
-      <div id="progress" class="progress" hidden>
-        <div class="progress-label"><span id="stage">starting</span><span id="steps-label"></span></div>
-        <div class="track"><div id="bar"></div></div>
-      </div>
-
-      <div id="result" class="result" hidden>
-        <img id="preview" alt="Generated image">
-        <a id="save" href="#" download>Save PNG</a>
-      </div>
-      <p id="message" class="message" role="status"></p>
     </section>
 
-    <section class="card">
-      <h2>Gallery</h2>
-      <div id="gallery" class="gallery"><p class="muted">No images yet.</p></div>
+    <section class="view" id="view-result">
+      <div class="section-head"><h2>Result</h2><span id="result-count" class="muted"></span></div>
+      <div id="result-list" class="cards"><p class="muted">No images yet. Generate one from the Prompt tab.</p></div>
+    </section>
+
+    <section class="view" id="view-history">
+      <div class="section-head"><h2>History</h2><button id="clear-history" class="text-btn" type="button">Clear</button></div>
+      <div id="history-list" class="cards"><p class="muted">No generations yet.</p></div>
     </section>
   </main>
+
+  <div id="settings-modal" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="Advanced Settings">
+      <div class="sheet-title">Advanced Settings</div>
+
+      <label>Resolution</label>
+      <div id="res-chips" class="chips">
+        <button type="button" data-w="256" data-h="256">256×256</button>
+        <button type="button" data-w="512" data-h="512">512×512</button>
+        <button type="button" data-w="512" data-h="768">512×768</button>
+        <button type="button" data-w="768" data-h="512">768×512</button>
+        <button type="button" data-w="384" data-h="384">384×384</button>
+        <button type="button" data-w="128" data-h="128">128×128</button>
+      </div>
+
+      <label for="method">Sampler</label>
+      <select id="method">
+        <option value="dpm++2m">DPM++ 2M</option>
+        <option value="euler_a">Euler A</option>
+        <option value="euler">Euler</option>
+        <option value="heun">Heun</option>
+        <option value="dpm++2m_sde">DPM++ 2M SDE</option>
+        <option value="lcm">LCM</option>
+        <option value="ddim_trailing">DDIM</option>
+      </select>
+
+      <label for="steps">Steps: <span id="steps-val">10</span></label>
+      <input id="steps" type="range" min="1" max="30" value="10">
+
+      <label for="cfg">CFG Scale: <span id="cfg-val">7.5</span></label>
+      <input id="cfg" type="range" min="1" max="15" step="0.5" value="7.5">
+
+      <label for="batch">Batch Count: <span id="batch-val">1</span></label>
+      <input id="batch" type="range" min="1" max="4" value="1">
+
+      <label for="seed">Random Seed (Optional)</label>
+      <input id="seed" type="number" value="-1" placeholder="Random">
+
+      <div class="sheet-actions">
+        <button id="reset-settings" class="text-btn danger" type="button">↺ Reset</button>
+        <button id="cancel-settings" class="text-btn" type="button">Cancel</button>
+        <button id="confirm-settings" class="primary" type="button">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="info-modal" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="About">
+      <div class="sheet-title">Local Dream — Image</div>
+      <p class="muted">Local, CPU-only image generation inside Debian/Termux. Powered by
+        stable-diffusion.cpp. No accounts, no uploads — images and history stay on this device.</p>
+      <p class="hint">The phone's NPU and the Android app's Inpaint / Upscale / Draw screens
+        are not available in this Debian webapp.</p>
+      <div class="sheet-actions"><button id="close-info" class="primary" type="button">Close</button></div>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>

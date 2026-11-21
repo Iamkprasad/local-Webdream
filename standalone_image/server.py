@@ -48,7 +48,7 @@ CATALOG = [
         "url": "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF"
                "/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q8_0.gguf",
         "source": "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF",
-        "size_mb": 1100,
+        "size_mb": 1682,
         "min_ram_mb": 2500,
         "license": "CreativeML OpenRAIL-M",
         "size": 256,
@@ -57,22 +57,24 @@ CATALOG = [
         "notes": "Best quality/size on phone CPU. Start here.",
     },
     {
-        "id": "sd15-q4km",
-        "name": "SD 1.5 Q4_K_M (GGUF)",
-        "file": "stable-diffusion-v1-5-pruned-emaonly-Q4_K_M.gguf",
+        "id": "sd15-q40",
+        "name": "SD 1.5 Q4_0 (GGUF)",
+        "file": "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
         "url": "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF"
-               "/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_K_M.gguf",
+               "/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
         "source": "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF",
-        "size_mb": 700,
+        "size_mb": 1494,
         "min_ram_mb": 1800,
         "license": "CreativeML OpenRAIL-M",
         "size": 256,
         "steps": 10,
         "sha256": None,
-        "notes": "Smaller fallback when free RAM is low.",
+        "notes": "Smallest available CPU fallback; start at 256x256 / 10 steps.",
     },
 ]
 ALLOWED_SIZES = (128, 256, 384, 512)
+SAMPLE_METHODS = ("euler", "euler_a", "heun", "dpm2", "dpm++2m",
+                  "dpm++2m_sde", "lcm", "ddim_trailing")
 
 _lock = threading.RLock()
 _gen_lock = threading.Lock()
@@ -120,14 +122,21 @@ def _pid_alive(pid):
         return False
 
 
-def _free_ram_mb():
+def _mem_info():
+    info = {"total_mb": None, "free_mb": None}
     try:
         for line in Path("/proc/meminfo").read_text().splitlines():
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) // 1024
+            if line.startswith("MemTotal:"):
+                info["total_mb"] = int(line.split()[1]) // 1024
+            elif line.startswith("MemAvailable:"):
+                info["free_mb"] = int(line.split()[1]) // 1024
     except Exception:
         pass
-    return None
+    return info
+
+
+def _free_ram_mb():
+    return _mem_info()["free_mb"]
 
 
 def _get(path, timeout=2.0):
@@ -218,13 +227,14 @@ def model_list():
         out.append({
             "id": entry["id"], "name": entry["name"],
             "installed": installed, "size_mb": entry["size_mb"],
+            "min_ram_mb": entry["min_ram_mb"],
             "license": entry["license"], "notes": entry["notes"],
             "source": entry["source"], "size": entry["size"],
             "steps": entry["steps"],
             "status": "loaded" if running and resident == entry["id"] else (
                 "installed" if installed else "not_installed"),
         })
-    return {"engine": engine_status(), "models": out}
+    return {"engine": engine_status(), "models": out, "capacity": _mem_info()}
 
 
 def _kill(pid, timeout=5):
@@ -335,29 +345,39 @@ def _generation_payload(body):
     prompt = str(body.get("prompt") or "").strip()
     if not prompt:
         raise ValueError("Prompt is required")
-    size = int(body.get("size") or 256)
-    if size not in ALLOWED_SIZES:
+    width = int(body.get("width") or body.get("size") or 256)
+    height = int(body.get("height") or body.get("size") or 256)
+    if width not in ALLOWED_SIZES or height not in ALLOWED_SIZES:
         raise ValueError("Unsupported size")
     steps = int(body.get("steps") or 10)
     if steps < 1 or steps > 30:
         raise ValueError("Steps must be 1..30")
+    cfg = float(body.get("cfg", 7.0))
+    if cfg < 1 or cfg > 30:
+        raise ValueError("CFG must be 1..30")
+    method = str(body.get("method") or "dpm++2m")
+    if method not in SAMPLE_METHODS:
+        raise ValueError("Unsupported sampler")
+    batch = int(body.get("batch") or 1)
+    if batch < 1 or batch > 4:
+        raise ValueError("Batch must be 1..4")
     seed = int(body.get("seed") if body.get("seed") is not None else -1)
     return {
         "prompt": prompt,
         "negative_prompt": str(body.get("negative_prompt") or ""),
-        "width": size,
-        "height": size,
+        "width": width,
+        "height": height,
         "seed": seed,
-        "batch_count": 1,
+        "batch_count": batch,
         "preview": "none",
         "output_format": "png",
-        "vae_tiling_params": {"enabled": size >= 512},
-        "sample_params": {"sample_steps": steps, "guidance": {"txt_cfg": 7.0}},
+        "vae_tiling_params": {"enabled": max(width, height) >= 512},
+        "sample_params": {"method": method, "sample_steps": steps,
+                          "guidance": {"txt_cfg": cfg}},
     }
 
 
-def generate(body, on_progress=None):
-    payload = _generation_payload(body)
+def generate(payload, on_progress=None):
     status, submitted = _request("POST", "/sdcpp/v1/img_gen", payload)
     if status not in (200, 202) or not submitted.get("id"):
         raise ValueError("Engine refused the generation job")
@@ -377,12 +397,14 @@ def generate(body, on_progress=None):
             if state in TERMINAL:
                 if state == "completed":
                     result = job.get("result") or {}
-                    images = result.get("images") or []
-                    if not images or not images[0].get("b64_json"):
+                    ms = (int(job.get("completed") or 0)
+                          - int(job.get("started") or 0))
+                    images = [{"b64": img["b64_json"], "ms": ms}
+                              for img in (result.get("images") or [])
+                              if img.get("b64_json")]
+                    if not images:
                         raise ValueError("Engine returned no image")
-                    return {"b64": images[0]["b64_json"],
-                            "ms": int(job.get("completed") or 0)
-                            - int(job.get("started") or 0)}
+                    return images
                 if state == "cancelled":
                     raise ValueError("Generation cancelled")
                 error = job.get("error") or {}
@@ -583,13 +605,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/generate":
             try:
                 body = self._body()
-                _generation_payload(body)
+                payload = _generation_payload(body)
             except ValueError as e:
                 return self._json(fail(e), 200)
             if not _gen_lock.acquire(blocking=False):
                 return self._json(fail("Generation already running"), 200)
             events = queue.Queue()
-            payload = body
 
             def worker():
                 try:
@@ -599,16 +620,25 @@ class Handler(BaseHTTPRequestHandler):
                                     "total": p.get("total"),
                                     "unit": p.get("unit")})
 
-                    result = generate(payload, on_progress=progress)
-                    raw = base64.b64decode(result["b64"])
-                    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
-                        raise ValueError("Engine returned a non-PNG image")
-                    image_id = uuid.uuid4().hex
+                    images = generate(payload, on_progress=progress)
                     (RESULTS / "images").mkdir(parents=True, exist_ok=True)
-                    (RESULTS / "images" / (image_id + ".png")).write_bytes(raw)
-                    events.put({"t": "done", "id": image_id,
-                                "path": "/api/image/" + image_id + ".png",
-                                "ms": result["ms"]})
+                    saved = []
+                    for item in images:
+                        raw = base64.b64decode(item["b64"])
+                        if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+                            raise ValueError("Engine returned a non-PNG image")
+                        image_id = uuid.uuid4().hex
+                        (RESULTS / "images" / (image_id + ".png")).write_bytes(raw)
+                        saved.append({"id": image_id,
+                                      "path": "/api/image/" + image_id + ".png"})
+                    params = {k: payload.get(k) for k in (
+                        "prompt", "negative_prompt", "width", "height",
+                        "seed", "batch_count")}
+                    params["steps"] = payload["sample_params"]["sample_steps"]
+                    params["cfg"] = payload["sample_params"]["guidance"]["txt_cfg"]
+                    params["method"] = payload["sample_params"]["method"]
+                    events.put({"t": "done", "images": saved,
+                                "ms": images[0]["ms"], "params": params})
                 except Exception as e:
                     events.put({"t": "error", "e": str(e)})
                 finally:

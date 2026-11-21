@@ -34,6 +34,10 @@ class CoreTests(unittest.TestCase):
             server._generation_payload({"prompt": ""})
         with self.assertRaises(ValueError):
             server._generation_payload({"prompt": "x", "size": 999})
+        with self.assertRaises(ValueError):
+            server._generation_payload({"prompt": "x", "cfg": 99})
+        with self.assertRaises(ValueError):
+            server._generation_payload({"prompt": "x", "method": "evil"})
 
     def test_generate_job(self):
         done = {"id": "j", "status": "completed", "started": 1, "completed": 3,
@@ -45,9 +49,10 @@ class CoreTests(unittest.TestCase):
         seen = []
         with patch.object(server, "_request", side_effect=responses), \
              patch.object(server, "set_job"), patch.object(server.time, "sleep"):
-            result = server.generate({"prompt": "x"}, on_progress=seen.append)
-        self.assertEqual(result["b64"], "QUJD")
-        self.assertEqual(result["ms"], 2)
+            payload = server._generation_payload({"prompt": "x"})
+            result = server.generate(payload, on_progress=seen.append)
+        self.assertEqual(result[0]["b64"], "QUJD")
+        self.assertEqual(result[0]["ms"], 2)
         self.assertEqual(seen[0]["stage"], "sampling")
 
     def test_unknown_model(self):
